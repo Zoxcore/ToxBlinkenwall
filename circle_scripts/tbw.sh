@@ -3,7 +3,8 @@
 _HOME_="$(pwd)"
 export _HOME_
 
-_TBW_SRC_DIR_="$1"
+cd "$1"
+_TBW_SRC_DIR_="$(pwd)"
 export _TBW_SRC_DIR_
 
 export _SRC_=$_HOME_/src/
