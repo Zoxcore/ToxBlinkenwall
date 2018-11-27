@@ -25,7 +25,7 @@ jobs:
           apt install -y
           zip grep file ca-certificates autotools-dev autoconf
           git bc wget rsync cmake make pkg-config yasm libtool
-          libasound2-dev
+          libasound2-dev libv4l-dev
 
       - run: mkdir -p build_dir ; cd build_dir ; bash -x ../circle_scripts/deps.sh
       - run: cd build_dir ; bash -x ../circle_scripts/tbw.sh '../'
