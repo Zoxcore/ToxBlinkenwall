@@ -12,8 +12,8 @@ jobs:
     working_directory: ~/work
     #machine:
     #  image: circleci/classic:latest
-    #docker:
-    #  - image: debian:stretch
+    docker:
+      - image: ubuntu:bionic
 
     steps:
       - checkout
