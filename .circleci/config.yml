@@ -19,13 +19,14 @@ jobs:
       - checkout
 #      - restore_cache:
 #          key: tbw-build-dependencies-v1-{{ .Branch }}
-      - run: sudo apt update &&
-          sudo apt install -y --no-install-recommends
+
+      - run: pwd; ls -al; id -a
+      - run: apt update &&
+          apt install -y --no-install-recommends
             quilt parted realpath qemu-user-static debootstrap zerofree pxz zip
             dosfstools bsdtar libcap2-bin grep rsync xz-utils file git curl
             openssl ca-certificates git sudo bc wget rsync
 
-      - run: pwd; ls -al; id -a
       # add ToxBlinkenwall custom build stuff ----------
 
 #      - save_cache:
