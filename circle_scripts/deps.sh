@@ -54,6 +54,35 @@ if [ "$1""x" != "cachex" ]; then
 
   echo "option: +NOcache+"
 
+
+# -- nasm --
+cd $_SRC_
+
+mkdir -p nasm
+cd nasm
+rm -f nasm.tar.bz2
+wget 'https://www.nasm.us/pub/nasm/releasebuilds/2.13.02/nasm-2.13.02.tar.bz2' -O nasm.tar.bz2
+echo '8d3028d286be7c185ba6ae4c8a692fc5438c129b2a3ffad60cbdcedd2793bbbe  nasm.tar.bz2'|sha256sum -c
+
+res=$?
+
+if [ $res -ne 0 ]; then
+    echo "checksum error in nasm source code!!"
+    exit 2
+fi
+
+tar -xjf nasm.tar.bz2 || true
+cd nasm-*
+
+bash autogen.sh
+./configure
+make -j$(nproc) || exit 1
+make install 
+nasm -v || exit 1
+# -- nasm --
+
+
+
 cd $_SRC_
 # rm -Rf libav
 git clone https://github.com/libav/libav
