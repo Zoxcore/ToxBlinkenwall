@@ -24,7 +24,7 @@ jobs:
       - run: apt update &&
           apt install -y --no-install-recommends
           zip grep file ca-certificates
-          git bc wget rsync cmake
+          git bc wget rsync cmake make c++ gcc
 
       - run: mkdir -p build_dir ; cd build_dir ; bash -x ../circle_scripts/deps.sh
       - run: cd build_dir ; bash -x ../circle_scripts/tbw.sh '../'
