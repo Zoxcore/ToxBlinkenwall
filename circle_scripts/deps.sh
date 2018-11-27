@@ -36,7 +36,7 @@ export PKG_CONFIG_PATH=$_INST_/lib/pkgconfig
 cd "$_SRC_"
 mkdir -p astyle
 cd astyle/
-# wget -O astyle.tgz https://downloads.sourceforge.net/project/astyle/astyle/astyle%203.1/astyle_3.1_linux.tar.gz?r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fastyle%2Ffiles%2Fastyle%2Fastyle%25203.1%2Fastyle_3.1_linux.tar.gz%2Fdownload
+wget -O astyle.tgz https://downloads.sourceforge.net/project/astyle/astyle/astyle%203.1/astyle_3.1_linux.tar.gz?r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fastyle%2Ffiles%2Fastyle%2Fastyle%25203.1%2Fastyle_3.1_linux.tar.gz%2Fdownload
 
 tar -xzvf astyle.tgz > /dev/null 2>&1
 mkdir -p build_astyle > /dev/null 2>&1

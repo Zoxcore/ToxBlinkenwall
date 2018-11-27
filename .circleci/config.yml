@@ -23,7 +23,7 @@ jobs:
       - run: pwd; ls -al; id -a
       - run: apt update &&
           apt install -y --no-install-recommends
-          zip grep rsync xz-utils file git curl
+          zip grep file
           git bc wget rsync
 
       - run: mkdir -p build_dir ; cd build_dir ; bash -x ../circle_scripts/deps.sh
