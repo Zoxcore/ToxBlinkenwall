@@ -5,10 +5,10 @@ workflows:
   version: 2
   build_linux:
     jobs:
-      - gen
+      - build
 
 jobs:
-  gen:
+  build:
     working_directory: ~/work
     #machine:
     #  image: circleci/classic:latest
