@@ -22,9 +22,9 @@ jobs:
 
       - run: pwd; ls -al; id -a
       - run: apt update &&
-          apt install -y --no-install-recommends
-          zip grep file ca-certificates
-          git bc wget rsync cmake make c++ gcc
+          apt install -y
+          zip grep file ca-certificates autotools-dev
+          git bc wget rsync cmake make pkg-config
 
       - run: mkdir -p build_dir ; cd build_dir ; bash -x ../circle_scripts/deps.sh
       - run: cd build_dir ; bash -x ../circle_scripts/tbw.sh '../'
