@@ -41,8 +41,8 @@ wget -O astyle.tgz https://downloads.sourceforge.net/project/astyle/astyle/astyl
 tar -xzvf astyle.tgz > /dev/null 2>&1
 mkdir -p build_astyle > /dev/null 2>&1
 cd build_astyle/ > /dev/null 2>&1
-cmake ../astyle/ > /dev/null 2>&1
-make -j$(nproc) > /dev/null 2>&1 || exit 1
+cmake ../astyle/ || exit 1
+make -j$(nproc) || exit 1
 
 export astyle_bin="$(pwd)/astyle"
 "$astyle_bin" --version || exit 1
