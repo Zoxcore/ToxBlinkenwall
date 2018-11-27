@@ -27,7 +27,7 @@ jobs:
             git bc wget rsync
 
        - run: mkdir -p build_dir ; cd build_dir ; bash ../circle_scripts/deps.sh
-       - run: cd build_dir ; bash ../circle_scripts/tbw.sh "../"
+       - run: cd build_dir ; bash ../circle_scripts/tbw.sh '../'
 
 #      - save_cache:
 #          paths: [ "~/work/cache" ]
