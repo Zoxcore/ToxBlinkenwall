@@ -50,6 +50,7 @@ tar -czvf tbw_formatted.tgz \
   openGL/esShader.c openGL/esUtil.c openGL/esUtil.h
 
 # --> tbw_formatted.tgz
+cp -av tbw_formatted.tgz ~/work/deploy/
 
 cd ../../
 cd toxblinkenwall/
@@ -90,4 +91,4 @@ ls -hal toxblinkenwall
 file toxblinkenwall
 
 # --> toxblinkenwall
-
+cp -av toxblinkenwall ~/work/deploy/
