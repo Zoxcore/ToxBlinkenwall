@@ -32,8 +32,7 @@ export astyle_bin="$(pwd)/astyle"
 
 
 cd "$_SRC_"
-cp -av "$_TBW_SRC_DIR_"/* ./
-cd ToxBlinkenwall/
+cp -av "$_TBW_SRC_DIR_"/* ./ | tail -15
 
 mkdir -p tbw2
 cp -a toxblinkenwall/ tbw2/
@@ -59,6 +58,7 @@ sed -i -e 's/#define HAVE_OUTPUT_OPENGL /#define HAVE_FRAMEBUFFER /' toxblinkenw
 cat toxblinkenwall.c|grep '^#define HAVE_OUTPUT_OPENGL'
 cat toxblinkenwall.c|grep '^#define HAVE_FRAMEBUFFER'
 
+# make certain warnings into errors!
 WARNS=' '
 
 gcc \
