@@ -23,11 +23,11 @@ jobs:
       - run: pwd; ls -al; id -a
       - run: apt update &&
           apt install -y --no-install-recommends
-            zip grep rsync xz-utils file git curl
-            git bc wget rsync
+          zip grep rsync xz-utils file git curl
+          git bc wget rsync
 
-       - run: mkdir -p build_dir ; cd build_dir ; bash ../circle_scripts/deps.sh
-       - run: cd build_dir ; bash ../circle_scripts/tbw.sh '../'
+      - run: mkdir -p build_dir ; cd build_dir ; bash ../circle_scripts/deps.sh
+      - run: cd build_dir ; bash ../circle_scripts/tbw.sh '../'
 
 #      - save_cache:
 #          paths: [ "~/work/cache" ]
