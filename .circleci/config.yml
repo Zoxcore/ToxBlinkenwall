@@ -26,7 +26,8 @@ jobs:
             zip grep rsync xz-utils file git curl
             git bc wget rsync
 
-      # add ToxBlinkenwall custom build stuff ----------
+       - run: mkdir -p build_dir ; cd build_dir ; bash ../circle_scripts/deps.sh
+       - run: cd build_dir ; bash ../circle_scripts/tbw.sh "../"
 
 #      - save_cache:
 #          paths: [ "~/work/cache" ]

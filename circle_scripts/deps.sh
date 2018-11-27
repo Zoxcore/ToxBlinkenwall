@@ -1,6 +1,6 @@
 #! /bin/bash
 
-_HOME_=/home/zoff/ttest/22/
+_HOME_="$(pwd)"
 export _HOME_
 
 export _SRC_=$_HOME_/src/

@@ -1,7 +1,10 @@
 #! /bin/bash
 
-_HOME_=/home/zoff/ttest/22/
+_HOME_="$(pwd)"
 export _HOME_
+
+_TBW_SRC_DIR_="$1"
+export _TBW_SRC_DIR_
 
 export _SRC_=$_HOME_/src/
 export _INST_=$_HOME_/inst/
@@ -28,7 +31,7 @@ export astyle_bin="$(pwd)/astyle"
 
 
 cd "$_SRC_"
-git clone https://github.com/zoff99/ToxBlinkenwall
+cp -av "$_TBW_SRC_DIR_"/* ./
 cd ToxBlinkenwall/
 
 mkdir -p tbw2
