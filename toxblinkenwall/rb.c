@@ -1,3 +1,11 @@
+/**
+ *
+ * ToxBlinkenwall
+ * (C)Zoff <zoff@zoff.cc> in 2017 - 2019
+ *
+ * https://github.com/zoff99/ToxBlinkenwall
+ *
+ */
 /*
  * Copyright © 2016-2017 The TokTok team.
  * Copyright © 2013 Tox project.
@@ -23,7 +31,8 @@
 
 #include <stdlib.h>
 
-struct BWRingBuffer {
+struct BWRingBuffer
+{
     uint16_t  size; /* Max size */
     uint16_t  start;
     uint16_t  end;
@@ -44,13 +53,14 @@ bool bw_rb_empty(const BWRingBuffer *b)
 
 /*
  * returns: NULL on success
-            start address of ?? on FAILURE
+            start address of element to delete on ringbuffer full, new element ist still written into buffer
  */
 void *bw_rb_write(BWRingBuffer *b, void *p, uint32_t w, uint32_t h)
 {
     void *rc = NULL;
 
-    if ((b->end + 1) % b->size == b->start) { /* full */
+    if ((b->end + 1) % b->size == b->start)   /* full */
+    {
         rc = b->data[b->start];
     }
 
@@ -59,7 +69,8 @@ void *bw_rb_write(BWRingBuffer *b, void *p, uint32_t w, uint32_t h)
     b->h[b->end] = h;
     b->end = (b->end + 1) % b->size;
 
-    if (b->end == b->start) {
+    if (b->end == b->start)
+    {
         b->start = (b->start + 1) % b->size;
     }
 
@@ -68,7 +79,8 @@ void *bw_rb_write(BWRingBuffer *b, void *p, uint32_t w, uint32_t h)
 
 bool bw_rb_read(BWRingBuffer *b, void **p, uint32_t *w, uint32_t *h)
 {
-    if (b->end == b->start) { /* Empty */
+    if (b->end == b->start)   /* Empty */
+    {
         *p = NULL;
         return false;
     }
@@ -76,7 +88,6 @@ bool bw_rb_read(BWRingBuffer *b, void **p, uint32_t *w, uint32_t *h)
     *p = b->data[b->start];
     *w = b->w[b->start];
     *h = b->h[b->start];
-
     b->start = (b->start + 1) % b->size;
     return true;
 }
@@ -85,22 +96,26 @@ BWRingBuffer *bw_rb_new(int size)
 {
     BWRingBuffer *buf = (BWRingBuffer *)calloc(sizeof(BWRingBuffer), 1);
 
-    if (!buf) {
+    if (!buf)
+    {
         return NULL;
     }
 
     buf->size = size + 1; /* include empty elem */
 
-    if (!(buf->data = (void **)calloc(buf->size, sizeof(void *)))) {
+    if (!(buf->data = (void **)calloc(buf->size, sizeof(void *))))
+    {
         free(buf);
         return NULL;
     }
 
-    if (!(buf->w = (uint32_t *)calloc(buf->size, sizeof(uint32_t)))) {
+    if (!(buf->w = (uint32_t *)calloc(buf->size, sizeof(uint32_t))))
+    {
         // TODO: ???
     }
 
-    if (!(buf->h = (uint32_t *)calloc(buf->size, sizeof(uint32_t)))) {
+    if (!(buf->h = (uint32_t *)calloc(buf->size, sizeof(uint32_t))))
+    {
         // TODO: ???
     }
 
@@ -109,7 +124,8 @@ BWRingBuffer *bw_rb_new(int size)
 
 void bw_rb_kill(BWRingBuffer *b)
 {
-    if (b) {
+    if (b)
+    {
         free(b->data);
         free(b->w);
         free(b->h);
@@ -119,7 +135,8 @@ void bw_rb_kill(BWRingBuffer *b)
 
 uint16_t bw_rb_size(const BWRingBuffer *b)
 {
-    if (bw_rb_empty(b)) {
+    if (bw_rb_empty(b))
+    {
         return 0;
     }
 
@@ -133,7 +150,8 @@ uint16_t bw_rb_data(const BWRingBuffer *b, void **dest)
 {
     uint16_t i = 0;
 
-    for (; i < bw_rb_size(b); i++) {
+    for (; i < bw_rb_size(b); i++)
+    {
         dest[i] = b->data[(b->start + i) % b->size];
     }
 
