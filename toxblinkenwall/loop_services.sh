@@ -60,7 +60,7 @@ chmod u+x scripts/linux/*.sh
 chmod u+x toxblinkenwall
 chmod u+x ext_keys_scripts/*.py
 chmod u+x ext_keys_scripts/*.sh
-chmod a+x udev2.sh udev.sh toggle_alsa.sh detect_usb_audio.sh
+chmod a+x udev2.sh udev.sh toggle_alsa.sh detect_usb_audio.sh alsa_mixer_ctrl.sh
 scripts/stop_loading_endless.sh
 scripts/stop_image_endless.sh
 scripts/init.sh
@@ -86,6 +86,8 @@ while [ 1 == 1 ]; do
     # v4l2-ctl -d "$video_device" --set-priority=3
     v4l2-ctl -d "$video_device" --set-ctrl=power_line_frequency=1
     v4l2-ctl -d "$video_device" -p 25
+    # set own camera preview size
+    v4l2-ctl -d "$video_device" --set-fmt-overlay=top=930,left=1658,width=250,height=141
 
     #        rotate (int)    : min=0 max=360 step=90 default=0 value=0 flags=00000400
     #
@@ -136,24 +138,54 @@ while [ 1 == 1 ]; do
     mkdir -p ./db/
 
     tor_option=" "
-    if [ -e "OPTION_USETOR" ]; then
+    if [ -f "OPTION_USETOR" ]; then
         tor_option=" -T "
     fi
 
-    if [ -e "OPTION_USE_ASAN" ]; then
+    ldd toxblinkenwall|grep -i libasan > /dev/null 2>&1
+    use_asan_lib=$?
+    if [ $use_asan_lib -eq 0 ]; then
         export LD_PRELOAD=/usr/lib/arm-linux-gnueabihf/libasan.so.3
-        export ASAN_OPTIONS=malloc_context_size=100:check_initialization_order=true # verbosity=2:
+        export ASAN_OPTIONS="malloc_context_size=100:check_initialization_order=true" # verbosity=2:
+        # export TSAN_OPTIONS="history_size=7 force_seq_cst_atomics=1"
+    else
+        export LD_PRELOAD=""
+        export ASAN_OPTIONS=""
+        export TSAN_OPTIONS=""
+        unset LD_PRELOAD
+        unset ASAN_OPTIONS
+        # unset TSAN_OPTIONS
     fi
 
-    if [ -e "OPTION_USE_STDLOG" ]; then
+    if [ -f "OPTION_USE_STDLOG" ]; then
         std_log=stdlog.log
     else
         std_log=/dev/null
     fi
 
+    ulimit -c 99999
+    v4l2-ctl --overlay=0
 	./toxblinkenwall $HD_FROM_CAM $tor_option -u "$fb_device" -j "$BKWALL_WIDTH" -k "$BKWALL_HEIGHT" -d "$video_device" > "$std_log" 2>&1
+    v4l2-ctl --overlay=0
     scripts/on_callend.sh
     scripts/on_offline.sh
+    #
+    if [ -f "OPTION_USE_STDLOG" ]; then
+        # save debug info ---------------
+        mv ./toxblinkenwall.2 ./toxblinkenwall.3
+        mv ./core.2 ./core.3
+        mv ./stdlog.log.2 ./stdlog.log.3
+        # -------------------------------
+        mv ./toxblinkenwall.1 ./toxblinkenwall.2
+        mv ./core.1 ./core.2
+        mv ./stdlog.log.1 ./stdlog.log.2
+        # -------------------------------
+        cp ./toxblinkenwall ./toxblinkenwall.1
+        mv ./core ./core.1
+        mv ./stdlog.log ./stdlog.log.1
+        # save debug info ---------------
+    fi
+    #
 	sleep 4
 
     # ---- only for RASPI ----
@@ -162,7 +194,7 @@ while [ 1 == 1 ]; do
     #fi
     # ---- only for RASPI ----
 
-    if [ -e "OPTION_NOLOOP" ]; then
+    if [ -f "OPTION_NOLOOP" ]; then
         # do not loop/restart
         clean_up
         exit 1

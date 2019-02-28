@@ -152,8 +152,8 @@ network={
 // ----------- version -----------
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 99
-#define VERSION_PATCH 36
-static const char global_version_string[] = "0.99.36";
+#define VERSION_PATCH 39
+static const char global_version_string[] = "0.99.39";
 // ----------- version -----------
 // ----------- version -----------
 
@@ -308,6 +308,7 @@ int using_h264_hw_accel = 0;
 int using_h264_encoder_in_toxcore = 0;
 int hw_encoder_wanted = 1;
 int hw_encoder_wanted_prev = 1;
+int show_own_cam = 1;
 
 #define PI_NORMAL_CAM_W 1280 // 896 // 1280;
 #define PI_NORMAL_CAM_H 720 // 512 // 720;
@@ -684,6 +685,9 @@ void save_resumable_fts(Tox *m, uint32_t friendnum);
 void resume_resumable_fts(Tox *m, uint32_t friendnum);
 void left_top_bar_into_yuv_frame(int bar_start_x_pix, int bar_start_y_pix, int bar_w_pix, int bar_h_pix, uint8_t r,
                                  uint8_t g, uint8_t b);
+void left_top_bar_into_yuv_frame_ptr(uint8_t *yuv_frame, int frame_w, int frame_h,
+                                     int bar_start_x_pix, int bar_start_y_pix, int bar_w_pix, int bar_h_pix,
+                                     uint8_t r, uint8_t g, uint8_t b);
 void print_font_char(int start_x_pix, int start_y_pix, int font_char_num, uint8_t col_value);
 void text_on_yuf_frame_xy(int start_x_pix, int start_y_pix, const char *text);
 void blinking_dot_on_frame_xy(int start_x_pix, int start_y_pix, int *state);
@@ -769,7 +773,10 @@ const char *shell_cmd__onstart = "./scripts/on_start.sh 2> /dev/null";
 const char *shell_cmd__oncallstart = "./scripts/on_callstart.sh 2> /dev/null";
 const char *shell_cmd__oncallend = "./scripts/on_callend.sh 2> /dev/null";
 const char *shell_cmd__ononline = "./scripts/on_online.sh 2> /dev/null";
-const char *shell_cmd__onofflone = "./scripts/on_offline.sh 2> /dev/null";
+const char *shell_cmd__onoffline = "./scripts/on_offline.sh 2> /dev/null";
+const char *shell_cmd__playback_volume_up = "./alsa_mixer_ctrl.sh 1 2> /dev/null";
+const char *shell_cmd__playback_volume_down = "./alsa_mixer_ctrl.sh 0 2> /dev/null";
+const char *shell_cmd__playback_volume_get_current = "./alsa_mixer_ctrl.sh 2 2> /dev/null";
 const char *cmd__image_filename_full_path = "./tmp/image.dat";
 const char *cmd__image_text_full_path = "./tmp/text.dat";
 int global_want_restart = 0;
@@ -855,6 +862,8 @@ int vid_height = 144; // ------- blinkenwall resolution -------
 
 
 #define AUDIO_VU_MIN_VALUE -20
+#define AUDIO_VU_MED_VALUE 80
+#define AUDIO_VU_RED_VALUE 80
 float global_audio_in_vu = AUDIO_VU_MIN_VALUE;
 float global_audio_out_vu = AUDIO_VU_MIN_VALUE;
 
@@ -982,9 +991,16 @@ uint32_t global_bw_video_play_delay = 0;
 uint32_t global_video_play_buffer_entries = 0;
 uint32_t global_video_h264_incoming_profile = 0;
 uint32_t global_video_h264_incoming_level = 0;
+uint32_t global_video_incoming_orientation_angle = 0;
+uint32_t global_video_incoming_orientation_angle_prev = 0;
+uint32_t global_display_orientation_angle = 0;
+uint32_t global_display_orientation_angle_prev = 0;
+uint32_t global_camera_orientation_angle = 0;
+uint32_t global_camera_orientation_angle_prev = 0;
 uint32_t global_tox_video_incoming_fps = 0;
 uint32_t global_last_change_nospam_ts = 0;
 #define CHANGE_NOSPAM_REGULAR_INTERVAL_SECS (3600) // 1h
+uint32_t global_playback_volume_in_percent = 50;
 
 // ------- zoxcore debug settings !! ------------
 extern int global_h264_enc_profile_high_enabled;
@@ -1141,6 +1157,7 @@ void randomish_string(char *str, size_t size)
 
     if (size)
     {
+        srandom(time(NULL));
         --size;
 
         for (size_t n = 0; n < size; n++)
@@ -1431,6 +1448,7 @@ void toggle_own_cam(int on_off)
     // TODO: make this better, and also select the correct camera device, if more than 1 camera
     char cmd_str[1000];
     CLEAR(cmd_str);
+    show_own_cam = on_off;
 
     if (on_off == 1)
     {
@@ -1466,9 +1484,90 @@ void on_offline()
 {
     char cmd_str[1000];
     CLEAR(cmd_str);
-    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__onofflone);
+    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__onoffline);
 
     if (system(cmd_str));
+}
+
+void playback_volume_get_current()
+{
+    char cmd_str[1000];
+    CLEAR(cmd_str);
+    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__playback_volume_get_current);
+    char output_str[1000];
+    CLEAR(output_str);
+    run_cmd_return_output(cmd_str, output_str, 1);
+
+    if (strlen(output_str) > 9)
+    {
+        // dbg(9, "playback_volume get:%s\n", (output_str + 9));
+        long int tempnum = strtol((output_str + 9), NULL, 10);
+
+        if (errno != ERANGE)
+        {
+            if ((tempnum >= 0) && (tempnum <= 100))
+            {
+                global_playback_volume_in_percent = (uint32_t)tempnum;
+            }
+        }
+    }
+    else
+    {
+    }
+}
+
+void playback_volume_up()
+{
+    char cmd_str[1000];
+    CLEAR(cmd_str);
+    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__playback_volume_up);
+    char output_str[1000];
+    CLEAR(output_str);
+    run_cmd_return_output(cmd_str, output_str, 1);
+
+    if (strlen(output_str) > 9)
+    {
+        // dbg(9, "playback_volume:%s\n", (output_str + 9));
+        long int tempnum = strtol((output_str + 9), NULL, 10);
+
+        if (errno != ERANGE)
+        {
+            if ((tempnum >= 0) && (tempnum <= 100))
+            {
+                global_playback_volume_in_percent = (uint32_t)tempnum;
+            }
+        }
+    }
+    else
+    {
+    }
+}
+
+void playback_volume_down()
+{
+    char cmd_str[1000];
+    CLEAR(cmd_str);
+    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__playback_volume_down);
+    char output_str[1000];
+    CLEAR(output_str);
+    run_cmd_return_output(cmd_str, output_str, 1);
+
+    if (strlen(output_str) > 9)
+    {
+        // dbg(9, "playback_volume:%s\n", (output_str + 9));
+        long int tempnum = strtol((output_str + 9), NULL, 10);
+
+        if (errno != ERANGE)
+        {
+            if ((tempnum >= 0) && (tempnum <= 100))
+            {
+                global_playback_volume_in_percent = (uint32_t)tempnum;
+            }
+        }
+    }
+    else
+    {
+    }
 }
 
 void button_a()
@@ -1488,9 +1587,10 @@ void button_a()
 
 void button_b()
 {
-    if (global_video_active == 0)
+    if (global_video_active == 1)
     {
-        show_tox_client_application_download_links();
+        show_own_cam = 1 - show_own_cam;
+        toggle_own_cam(show_own_cam);
     }
 }
 
@@ -1511,6 +1611,7 @@ void button_d()
 // stuff to do when we end a call
 void on_end_call()
 {
+    toggle_own_cam(0);
 #ifdef HAVE_OUTPUT_OMX
 
     if (omx_initialized == 1)
@@ -1525,6 +1626,8 @@ void on_end_call()
 
     update_omx_osd_counter = 999;
 #endif
+    global_video_incoming_orientation_angle_prev = 0;
+    global_video_incoming_orientation_angle = 0;
     char cmd_str[1000];
     CLEAR(cmd_str);
     snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__oncallend);
@@ -1541,6 +1644,25 @@ void on_start_call()
     snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__oncallstart);
 
     if (system(cmd_str));
+
+    toggle_own_cam(1);
+
+    if (friend_to_send_video_to > -1)
+    {
+        if ((global_camera_orientation_angle >= TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_0)
+                || (global_camera_orientation_angle <= TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_270))
+        {
+            TOXAV_ERR_OPTION_SET error;
+            toxav_option_set(mytox_av, (uint32_t)friend_to_send_video_to, TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION,
+                             (int32_t)global_camera_orientation_angle, &error);
+            dbg(9, "TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION set:res=%d\n", (int)error);
+
+            if (error == TOXAV_ERR_OPTION_SET_OK)
+            {
+                global_camera_orientation_angle_prev = global_camera_orientation_angle;
+            }
+        }
+    }
 }
 
 
@@ -1638,9 +1760,9 @@ Tox *create_tox()
     }
 
     // ----------------------------------------------
-    options.ipv6_enabled = false;
+    options.ipv6_enabled = true;
     options.local_discovery_enabled = true;
-    options.hole_punching_enabled = false;
+    options.hole_punching_enabled = true;
     options.tcp_port = tcp_port;
 
     if (use_tor == 1)
@@ -2299,7 +2421,7 @@ void show_tox_id_qrcode(Tox *tox)
     {
         if ((tox != NULL) && (global_fb_device_stats_filled == 1))
         {
-            dbg(9, "Friends:A:000.0\n");
+            // dbg(9, "Friends:A:000.0\n");
             fb_fill_black();
             unsigned char *bf_out_real_fb = framebuffer_mappedmem;
             uint32_t line_position_y = 30;
@@ -2311,6 +2433,45 @@ void show_tox_id_qrcode(Tox *tox)
             uint8_t color_g;
             uint8_t color_b;
             uint32_t j = 0;
+
+            // ------------------------------------
+            // Display own connection status
+            switch (my_connection_status)
+            {
+                case TOX_CONNECTION_NONE:
+                    // default to: RED
+                    color_r = 255;
+                    color_g = 0;
+                    color_b = 0;
+                    break;
+
+                case TOX_CONNECTION_TCP:
+                    // orange like
+                    color_r = 255;
+                    color_g = 204;
+                    color_b = 0;
+                    break;
+
+                case TOX_CONNECTION_UDP:
+                    // greenish
+                    color_r = 0;
+                    color_g = 128;
+                    color_b = 0;
+                    break;
+
+                default:
+                    // default to: RED
+                    color_r = 255;
+                    color_g = 0;
+                    color_b = 0;
+                    break;
+            }
+
+            left_top_bar_into_bgra_frame(var_framebuffer_info.xres, var_framebuffer_info.yres,
+                                         var_framebuffer_fix_info.line_length, bf_out_real_fb,
+                                         line_position_x_header, line_position_y, 126, 3,
+                                         color_r, color_g, color_b);
+            line_position_y = line_position_y + 4;
             // ------------------------------------
             // Display version
             CLEAR(text_line);
@@ -2425,7 +2586,7 @@ void show_tox_id_qrcode(Tox *tox)
             // ------------------------------------
             //
             // Display all Friends second
-            dbg(9, "Friends.max_idx=%d\n", Friends.max_idx);
+            // dbg(9, "Friends.max_idx=%d\n", Friends.max_idx);
             text_on_bgra_frame_xy(var_framebuffer_info.xres, var_framebuffer_info.yres,
                                   var_framebuffer_fix_info.line_length, bf_out_real_fb,
                                   line_position_x_header, line_position_y, "Friends:");
@@ -2499,7 +2660,7 @@ void show_tox_id_qrcode(Tox *tox)
             }
         }
 
-        dbg(9, "Friends:A:099\n");
+        // dbg(9, "Friends:A:099\n");
     }
     else // if (QRCODE_AS_DEFAULT_SCREEN == 1)
     {
@@ -2961,6 +3122,11 @@ void friendlist_onFriendAdded(Tox *m, uint32_t num, bool sort)
 
     update_friend_last_online(num, t);
     Friends.max_idx++;
+
+    if (global_is_qrcode_showing_on_screen == 1)
+    {
+        show_tox_id_qrcode(m);
+    }
 }
 
 // after you are finished call free_friendlist_nums !
@@ -3527,7 +3693,7 @@ void cmd_osupdatefull(Tox *tox, uint32_t friend_number)
 
 void pick_up_call()
 {
-    // pickup on the Call ----------
+    // pickup the Call ----------
     if (call_waiting_for_answer == 1)
     {
         if ((mytox_av != NULL) && (call_waiting_friend_num != -1))
@@ -3536,7 +3702,7 @@ void pick_up_call()
         }
     }
 
-    // pickup on the Call ----------
+    // pickup the Call ----------
 }
 
 void cmd_pickup(Tox *tox, uint32_t friend_number)
@@ -3690,6 +3856,14 @@ void invite_toxid_as_friend(Tox *tox, uint8_t *tox_id_bin)
                                             (uint8_t *) message_str,
                                             (size_t) strlen(message_str),
                                             &error);
+
+        // -------- we can activate this if we run into problems --------
+        // -------- we can activate this if we run into problems --------
+        // just in case, add the friend no matter what
+        // TOX_ERR_FRIEND_ADD dummy_error;
+        // uint32_t dummy = tox_friend_add_norequest(tox, (uint8_t *) tox_id_bin, &dummy_error);
+        // -------- we can activate this if we run into problems --------
+        // -------- we can activate this if we run into problems --------
 
         if (error != 0)
         {
@@ -3883,6 +4057,11 @@ void friend_name_cb(Tox *tox, uint32_t friend_number, const uint8_t *name, size_
     else
     {
         CLEAR(Friends.list[j].name);
+    }
+
+    if (global_is_qrcode_showing_on_screen == 1)
+    {
+        show_tox_id_qrcode(tox);
     }
 }
 
@@ -5946,6 +6125,29 @@ static void t_toxav_call_comm_cb(ToxAV *av, uint32_t friend_number, TOXAV_CALL_C
     {
         global_video_h264_incoming_level = (uint32_t)comm_number;
     }
+    else if (comm_value == TOXAV_CALL_COMM_PLAY_VIDEO_ORIENTATION)
+    {
+        if ((uint32_t)comm_number == TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_0)
+        {
+            global_video_incoming_orientation_angle_prev = global_video_incoming_orientation_angle;
+            global_video_incoming_orientation_angle = 0;
+        }
+        else if ((uint32_t)comm_number == TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_90)
+        {
+            global_video_incoming_orientation_angle_prev = global_video_incoming_orientation_angle;
+            global_video_incoming_orientation_angle = 90;
+        }
+        else if ((uint32_t)comm_number == TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_180)
+        {
+            global_video_incoming_orientation_angle_prev = global_video_incoming_orientation_angle;
+            global_video_incoming_orientation_angle = 180;
+        }
+        else if ((uint32_t)comm_number == TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_270)
+        {
+            global_video_incoming_orientation_angle_prev = global_video_incoming_orientation_angle;
+            global_video_incoming_orientation_angle = 270;
+        }
+    }
     else if (comm_value == TOXAV_CALL_COMM_ENCODER_CURRENT_BITRATE)
     {
         global_encoder_video_bitrate_prev = global_encoder_video_bitrate;
@@ -6773,56 +6975,168 @@ void crop_yuv_frame(uint8_t **y, uint32_t frame_width_px1, uint32_t frame_height
 void prepare_omx_osd_audio_level_yuv(uint8_t *dis_buf, int dw, int dh, int dstride)
 {
     uint8_t *dis_buf_save = dis_buf;
+    const int lines_down = 6;
+    const int lines_height = 3;
+    const int factor = 3;
+    const int volume_right_bar_width = 10;
+    //
+    // --- audio out level ---
+    left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                    0, 0, (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE), 4,
+                                    0, 0, 0);
+    left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                    0, 0, (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE), 2,
+                                    0, 255, 0);
 
-    for (int lines = 0; lines < 4; lines++)
+    if ((int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE) > AUDIO_VU_MED_VALUE)
     {
-        if ((lines == 0) || (lines == 3))
-        {
-            memset(dis_buf_save, 0, (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE));
-        }
-        else
-        {
-            memset(dis_buf_save, 255, (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE));
-        }
-
-        dis_buf_save = dis_buf_save + dstride;
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_MED_VALUE, 0,
+                                        (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_MED_VALUE, 4,
+                                        0, 0, 0);
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_MED_VALUE, 0,
+                                        (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_MED_VALUE, 2,
+                                        255, 255, 0);
+    }
+    else if ((int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE) > AUDIO_VU_RED_VALUE)
+    {
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_RED_VALUE, 0,
+                                        (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_RED_VALUE, 4,
+                                        0, 0, 0);
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_RED_VALUE, 0,
+                                        (int)(global_audio_out_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_RED_VALUE, 2,
+                                        255, 0, 0);
     }
 
-    dis_buf_save = dis_buf + (6 * dstride);
+    // --- audio out level ---
+    //
+    // --- audio in level ---
+    // dbg(9, "global_audio_in_vu=%f\n", global_audio_in_vu);
+    left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                    0, lines_down, (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE), 4,
+                                    0, 0, 0);
+    left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                    0, lines_down, (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE), 2,
+                                    0, 255, 0);
 
-    for (int lines = 0; lines < 4; lines++)
+    if ((int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE) > AUDIO_VU_MED_VALUE)
     {
-        if ((lines == 0) || (lines == 3))
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_MED_VALUE, lines_down,
+                                        (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_MED_VALUE, 4,
+                                        0, 0, 0);
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_MED_VALUE, lines_down,
+                                        (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_MED_VALUE, 2,
+                                        255, 255, 0);
+    }
+    else if ((int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE) > AUDIO_VU_RED_VALUE)
+    {
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_RED_VALUE, lines_down,
+                                        (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_RED_VALUE, 4,
+                                        0, 0, 0);
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        AUDIO_VU_RED_VALUE, lines_down,
+                                        (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE) - AUDIO_VU_RED_VALUE, 2,
+                                        255, 0, 0);
+    }
+
+    // --- audio in level ---
+    //
+    //
+    // --- playback mixer volume ---
+    dis_buf_save = dis_buf + ((2 * lines_down) * dstride);
+
+    for (int lines = 0; lines < (lines_height + 1); lines++)
+    {
+        if ((lines == 0) || (lines == lines_height))
         {
-            memset(dis_buf_save, 0, (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE));
+            memset(dis_buf_save, 0, (int)(global_playback_volume_in_percent * factor));
+            memset(dis_buf_save + (100 * factor), 0, volume_right_bar_width);
         }
         else
         {
-            memset(dis_buf_save, 255, (int)(global_audio_in_vu - AUDIO_VU_MIN_VALUE));
+            memset(dis_buf_save, 255, (int)(global_playback_volume_in_percent * factor));
+            memset(dis_buf_save + (100 * factor), 255, volume_right_bar_width);
         }
 
         dis_buf_save = dis_buf_save + dstride;
     }
 }
 
-
-
 void draw_omx_osd_yuv(uint8_t *yuf_buf, int w, int h, int stride, uint8_t *dis_buf, int dw, int dh, int dstride)
 {
     if (dh > (h + 1))
     {
-        if (dstride >  stride + 8)
+        if (dstride > stride + 8)
         {
             uint8_t *start_output_pos = dis_buf + (dstride * dh) - (dstride * h - 1);
 
             for (int i = 0; i < h; i++)
             {
-                // copy y plane
+                // copy only the y-plane
                 memcpy(start_output_pos, yuf_buf, w);
                 start_output_pos = start_output_pos + dstride;
                 yuf_buf = yuf_buf + stride;
             }
         }
+    }
+
+    // draw the connection status of the friend we are in a video call with
+    //
+    // color black on some error
+    uint8_t color_r = 0;
+    uint8_t color_g = 0;
+    uint8_t color_b = 0;
+    int8_t conn_good = -1;
+    const uint8_t conn_color_bar_width = 8;
+    // orange like
+    color_r = 255;
+    color_g = 204;
+    color_b = 0;
+
+    if (friend_to_send_video_to > -1)
+    {
+        int friendlistnum = find_friend_in_friendlist((uint32_t)friend_to_send_video_to);
+
+        if (friendlistnum > -1)
+        {
+            if (Friends.list[friendlistnum].active == false)
+            {
+                // strange, this should not happen
+            }
+            else
+            {
+                conn_good = 0;
+
+                if (Friends.list[friendlistnum].connection_status == TOX_CONNECTION_UDP)
+                {
+                    // greenish
+                    color_r = 0;
+                    color_g = 128;
+                    color_b = 0;
+                    conn_good = 1;
+                }
+            }
+        }
+
+        int y_coord_start = dh - (h / 2);
+        int y_bar_height = dh - (y_coord_start) - 1;
+
+        if (conn_good == 1)
+        {
+            y_coord_start = dh - h;
+            y_bar_height = h;
+        }
+
+        left_top_bar_into_yuv_frame_ptr(dis_buf, dstride, dh,
+                                        0, y_coord_start,
+                                        conn_color_bar_width, y_bar_height,
+                                        color_r, color_g, color_b);
     }
 }
 
@@ -6921,69 +7235,6 @@ void prepare_omx_osd_yuv(uint8_t *yuf_buf, int w, int h, int stride, int dw, int
     }
 
     text_on_yuf_frame_xy_ptr(8, 22, fps_str, yuf_buf, w, h);
-    // draw the connection status of the friend we are in a video call with
-    //
-    // color black on some error
-    uint8_t color_r = 0;
-    uint8_t color_g = 0;
-    uint8_t color_b = 0;
-    int8_t conn_good = -1;
-
-    if (friend_to_send_video_to > -1)
-    {
-        int friendlistnum = find_friend_in_friendlist((uint32_t)friend_to_send_video_to);
-
-        if (friendlistnum > -1)
-        {
-            if (Friends.list[friendlistnum].active == false)
-            {
-                // strange, this should not happen
-            }
-            else
-            {
-                conn_good = 0;
-
-                if (Friends.list[friendlistnum].connection_status == TOX_CONNECTION_UDP)
-                {
-                    // greenish
-                    conn_good = 1;
-                }
-            }
-        }
-    }
-
-    for (int lines = 0; lines < h; lines++)
-    {
-        for (int pixels = 0; pixels < 5; pixels++)
-        {
-            if (conn_good == -1)
-            {
-            }
-            else if (conn_good == 0)
-            {
-                if (lines < (h / 2))
-                {
-                    color_r = 0;
-                    color_g = 255;
-                    color_b = 0;
-                }
-                else
-                {
-                    color_r = 255;
-                    color_g = 255;
-                    color_b = 255;
-                }
-            }
-            else if (conn_good == 1)
-            {
-                color_r = 0;
-                color_g = 255;
-                color_b = 0;
-            }
-
-            set_color_in_yuv_frame_xy(yuf_buf, pixels, lines, w, h, color_r, color_g, color_b);
-        }
-    }
 }
 
 
@@ -7049,7 +7300,7 @@ static void *video_play(void *dummy)
     uint32_t frame_width_px = (uint32_t) max(frame_width_px1, abs(ystride_));
     uint32_t frame_height_px = (uint32_t) frame_height_px1;
 #ifndef HAVE_OUTPUT_OMX
-    sem_post(&video_in_frame_copy_sem);
+    //*SINGLE*THREADED*// sem_post(&video_in_frame_copy_sem);
 #endif
 #ifdef HAVE_OUTPUT_OPENGL
     //incoming_video_width = (int)frame_width_px;
@@ -7119,6 +7370,8 @@ static void *video_play(void *dummy)
     {
         omx_init(&omx);
         omx_initialized = 1;
+        // force to check rotation
+        global_display_orientation_angle_prev = 99;
     }
 
     if (frame_width_px != omx_w || frame_height_px != omx_h)
@@ -7133,6 +7386,8 @@ static void *video_play(void *dummy)
             omx_init(&omx);
             usleep_usec(10000);
             omx_initialized = 1;
+            // force to check rotation
+            global_display_orientation_angle_prev = 99;
         }
 
         int err = omx_display_enable(&omx, frame_width_px1, frame_height_px1, ystride);
@@ -7140,17 +7395,43 @@ static void *video_play(void *dummy)
         if (err)
         {
             dbg(9, "omx_display_enable ERR=%d\n", err);
-            sem_post(&video_in_frame_copy_sem);
-            pthread_exit(0);
+            //*SINGLE*THREADED*// sem_post(&video_in_frame_copy_sem);
+            //*SINGLE*THREADED*// pthread_exit(0);
+            return (void *)NULL;
         }
 
         omx_w = frame_width_px;
         omx_h = frame_height_px;
     }
 
+    // --- check rotation ---
+    if ((global_video_incoming_orientation_angle_prev != global_video_incoming_orientation_angle)
+            ||
+            (global_display_orientation_angle_prev != global_display_orientation_angle))
+    {
+        int32_t rotate_angle = global_video_incoming_orientation_angle - global_display_orientation_angle;
+
+        if (rotate_angle < 0)
+        {
+            rotate_angle = 360 + rotate_angle;
+        }
+
+        omx_change_video_out_rotation(&omx, rotate_angle);
+        global_video_incoming_orientation_angle_prev = global_video_incoming_orientation_angle;
+        global_display_orientation_angle_prev = global_display_orientation_angle;
+    }
+
+    // --- check rotation ---
     void *buf = NULL;
     uint32_t len = 0;
     omx_display_input_buffer(&omx, &buf, &len);
+    uint32_t yuf_data_buf_len = y_layer_size + u_layer_size + v_layer_size;
+
+    if (yuf_data_buf_len > len)
+    {
+        dbg(9, "OMX: Error buffer too small !!!!!!\n");
+    }
+
     // dbg(9, "omx plen=%d\n", (int)(len));
     memcpy(buf, video__y, y_layer_size);
     memcpy(buf + y_layer_size, video__u, u_layer_size);
@@ -7175,8 +7456,8 @@ static void *video_play(void *dummy)
     draw_omx_osd_yuv(omx_osd_y, omx_osd_w, omx_osd_h, omx_osd_w, buf, frame_width_px1, frame_height_px1, ystride);
     prepare_omx_osd_audio_level_yuv(buf, frame_width_px1, frame_height_px1, ystride);
     // OSD --------
-    omx_display_flush_buffer(&omx);
-    sem_post(&video_in_frame_copy_sem);
+    omx_display_flush_buffer(&omx, yuf_data_buf_len);
+    //*SINGLE*THREADED*// sem_post(&video_in_frame_copy_sem);
 #endif
 #ifdef HAVE_FRAMEBUFFER
     full_width = var_framebuffer_info.xres;
@@ -7469,7 +7750,11 @@ static void *video_play(void *dummy)
 #endif
     dec_video_t_counter();
     // dbg(9, "VP-DEBUG:022-EXIT\n");
+#ifdef HAVE_OUTPUT_OMX
+    //*SINGLE*THREADED*// pthread_exit(0);
+#else
     pthread_exit(0);
+#endif
 }
 
 
@@ -7566,6 +7851,9 @@ static void t_toxav_receive_video_frame_cb(ToxAV *av, uint32_t friend_number,
                 video__ystride = ystride;
                 video__ustride = ustride;
                 video__vstride = vstride;
+#ifdef HAVE_OUTPUT_OMX
+                video_play((void *)NULL);
+#else
                 pthread_t video_play_thread;
 
                 if (get_video_t_counter() < MAX_VIDEO_PLAY_THREADS)
@@ -7599,6 +7887,7 @@ static void t_toxav_receive_video_frame_cb(ToxAV *av, uint32_t friend_number,
                 }
 
                 //PL// sem_post(&video_play_lock);
+#endif
             }
         }
         else
@@ -7956,6 +8245,23 @@ void *thread_av(void *data)
 
                 if (friend_to_send_video_to != -1)
                 {
+                    if (global_camera_orientation_angle_prev != global_camera_orientation_angle)
+                    {
+                        if ((global_camera_orientation_angle >= TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_0)
+                                || (global_camera_orientation_angle <= TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_270))
+                        {
+                            TOXAV_ERR_OPTION_SET error_orientation;
+                            toxav_option_set(mytox_av, (uint32_t)friend_to_send_video_to, TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION,
+                                             (int32_t)global_camera_orientation_angle, &error_orientation);
+                            dbg(9, "TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION set(2):res=%d\n", (int)error_orientation);
+
+                            if (error_orientation == TOXAV_ERR_OPTION_SET_OK)
+                            {
+                                global_camera_orientation_angle_prev = global_camera_orientation_angle;
+                            }
+                        }
+                    }
+
                     // dbg(9, "AV Thread #%d:send frame to friend num=%d\n", (int) id, (int)friend_to_send_video_to);
                     // ---- DEBUG ----
                     long long timspan_in_ms = 99999;
@@ -8879,31 +9185,42 @@ void text_on_yuf_frame_xy(int start_x_pix, int start_y_pix, const char *text)
     }
 }
 
-void left_top_bar_into_yuv_frame(int bar_start_x_pix, int bar_start_y_pix, int bar_w_pix, int bar_h_pix, uint8_t r,
-                                 uint8_t g, uint8_t b)
+void left_top_bar_into_yuv_frame_ptr(uint8_t *yuv_frame, int frame_w, int frame_h,
+                                     int bar_start_x_pix, int bar_start_y_pix, int bar_w_pix, int bar_h_pix,
+                                     uint8_t r, uint8_t g, uint8_t b)
 {
-    // int bar_width = bar_w_pix; // 150; // should be mulitple of 2 !!
-    // int bar_height = bar_h_pix; // 20; // should be mulitple of 2 !!
-    // int bar_start_x = bar_start_x_pix; // 10; // should be mulitple of 2 !! (zero is also ok)
-    // int bar_start_y = bar_start_y_pix; // 10; // should be mulitple of 2 !! (zero is also ok)
-    // uint8_t *y_plane = av_video_frame.y;
     int k;
     int j;
-    // int offset = 0;
 
     for (k = 0; k < bar_h_pix; k++)
     {
-        // y_plane = av_video_frame.y + ((bar_start_y + k) * av_video_frame.w);
-        // y_plane = y_plane + bar_start_x;
+        for (j = 0; j < bar_w_pix; j++)
+        {
+            set_color_in_yuv_frame_xy(yuv_frame, (bar_start_x_pix + j), (bar_start_y_pix + k),
+                                      frame_w, frame_h, r, g, b);
+        }
+    }
+}
+
+
+void left_top_bar_into_yuv_frame(int bar_start_x_pix, int bar_start_y_pix, int bar_w_pix, int bar_h_pix, uint8_t r,
+                                 uint8_t g, uint8_t b)
+{
+    int k;
+    int j;
+
+    for (k = 0; k < bar_h_pix; k++)
+    {
         for (j = 0; j < bar_w_pix; j++)
         {
             // ******** // *y_plane = col_value; // luma value to 255 (white)
             set_color_in_yuv_frame_xy(av_video_frame.y, (bar_start_x_pix + j), (bar_start_y_pix + k),
                                       av_video_frame.w, av_video_frame.h, r, g, b);
-            // y_plane = y_plane + 1;
         }
     }
 }
+
+
 // ------------------ YUV420 overlay hack -------------
 // ------------------ YUV420 overlay hack -------------
 // ------------------ YUV420 overlay hack -------------
@@ -9381,6 +9698,11 @@ void *thread_phonebook_invite(void *data)
             yieldcpu(30);
         }
 
+        if (global_is_qrcode_showing_on_screen == 1)
+        {
+            show_tox_id_qrcode(tox);
+        }
+
         yieldcpu(30 * 1000); // invite all phonebook entries (that are not yet friends) every 30 seconds
     }
 }
@@ -9427,6 +9749,36 @@ void *thread_ext_keys(void *data)
             {
                 dbg(2, "ExtKeys: CALL:3\n");
                 call_entry_num(tox, 3);
+            }
+            else if (strncmp((char *)buf, "call:4", strlen((char *)"call:4")) == 0)
+            {
+                dbg(2, "ExtKeys: CALL:4\n");
+                call_entry_num(tox, 4);
+            }
+            else if (strncmp((char *)buf, "call:5", strlen((char *)"call:5")) == 0)
+            {
+                dbg(2, "ExtKeys: CALL:5\n");
+                call_entry_num(tox, 5);
+            }
+            else if (strncmp((char *)buf, "call:6", strlen((char *)"call:6")) == 0)
+            {
+                dbg(2, "ExtKeys: CALL:6\n");
+                call_entry_num(tox, 6);
+            }
+            else if (strncmp((char *)buf, "call:7", strlen((char *)"call:7")) == 0)
+            {
+                dbg(2, "ExtKeys: CALL:7\n");
+                call_entry_num(tox, 7);
+            }
+            else if (strncmp((char *)buf, "call:8", strlen((char *)"call:8")) == 0)
+            {
+                dbg(2, "ExtKeys: CALL:8\n");
+                call_entry_num(tox, 8);
+            }
+            else if (strncmp((char *)buf, "call:9", strlen((char *)"call:9")) == 0)
+            {
+                dbg(2, "ExtKeys: CALL:9\n");
+                call_entry_num(tox, 9);
             }
             else if (strncmp((char *)buf, "hangup:", strlen((char *)"hangup:")) == 0)
             {
@@ -9508,6 +9860,44 @@ void *thread_ext_keys(void *data)
                 dbg(2, "ExtKeys: Button D:\n");
                 button_d();
             }
+            else if (strncmp((char *)buf, "play-vol:up", strlen((char *)"play-vol:up")) == 0)
+            {
+                dbg(2, "ExtKeys: play-vol:up\n");
+                playback_volume_up();
+            }
+            else if (strncmp((char *)buf, "play-vol:down", strlen((char *)"play-vol:down")) == 0)
+            {
+                dbg(2, "ExtKeys: play-vol:down\n");
+                playback_volume_down();
+            }
+            else if (strncmp((char *)buf, "camera-orient:turn-right", strlen((char *)"camera-orient:turn-right")) == 0)
+            {
+                dbg(2, "ExtKeys: camera-orient:turn-right\n");
+
+                if (global_camera_orientation_angle >= TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_270)
+                {
+                    global_camera_orientation_angle = TOXAV_CLIENT_INPUT_VIDEO_ORIENTATION_0;
+                }
+                else
+                {
+                    global_camera_orientation_angle++;
+                }
+            }
+            else if (strncmp((char *)buf, "display-orient:turn-right", strlen((char *)"display-orient:turn-right")) == 0)
+            {
+                dbg(2, "ExtKeys: display-orient:turn-right:old=%d\n", (int)global_display_orientation_angle);
+
+                if (global_display_orientation_angle >= 270)
+                {
+                    global_display_orientation_angle = 0;
+                }
+                else
+                {
+                    global_display_orientation_angle = global_display_orientation_angle + 90;
+                }
+
+                dbg(2, "ExtKeys: display-orient:turn-right:new=%d\n", (int)global_display_orientation_angle);
+            }
 
             CLEAR(buf);
         }
@@ -9553,6 +9943,7 @@ void reopen_sound_devices()
     init_sound_device();
     sem_post(&audio_record_lock);
 #endif
+    playback_volume_get_current();
 }
 
 #ifdef HAVE_ALSA_PLAY
@@ -10883,6 +11274,7 @@ int main(int argc, char *argv[])
     on_start();
     // don't accept calls until video device is ready
     accepting_calls = 0;
+    show_own_cam = 1;
     show_endless_loading();
     global_want_restart = 0;
     global_video_active = 0;
@@ -11130,6 +11522,7 @@ int main(int argc, char *argv[])
 #ifdef HAVE_ALSA_PLAY
     init_sound_play_device(1, 48000);
     count_audio_play_threads_int = 0;
+    playback_volume_get_current();
 
     if (sem_init(&count_audio_play_threads, 0, 1))
     {
